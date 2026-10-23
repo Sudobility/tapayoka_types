@@ -23,12 +23,7 @@ import type { BaseResponse } from '@sudobility/types';
 export type OfferingType = 'TRIGGER' | 'FIXED' | 'TIMED';
 
 export type OrderStatus =
-  | 'CREATED'
-  | 'PAID'
-  | 'AUTHORIZED'
-  | 'RUNNING'
-  | 'DONE'
-  | 'FAILED';
+  'CREATED' | 'PAID' | 'AUTHORIZED' | 'RUNNING' | 'DONE' | 'FAILED';
 
 export type UserRole = 'vendor' | 'buyer';
 
@@ -1010,8 +1005,7 @@ export type TierStep =
   | { screen: 'Payment'; tier: PricingTier; slot: VerifySlot | null };
 
 export type AfterSlotStep =
-  | { screen: 'ServiceSelection'; slot: VerifySlot | null }
-  | TierStep;
+  { screen: 'ServiceSelection'; slot: VerifySlot | null } | TierStep;
 
 export type NextStep = { screen: 'SlotSelection' } | AfterSlotStep;
 
