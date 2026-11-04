@@ -93,7 +93,7 @@ export interface OfferingSignal {
  * Location depends on the model's slot type:
  * - single-slot models (parking, laundromat) define the action on the shared
  *   {@link PricingTier} so every same-tier device behaves identically;
- * - multi-slot models (locker, vending) define it per {@link VendorInstallationSlot}
+ * - multi-slot models (locker, vending) define it per {@link VendorDeviceSlot}
  *   because each door/column is wired to its own pin.
  *
  * Resolved at execution time as `slot.action ?? tier.action` — see
@@ -249,12 +249,12 @@ export interface VendorOffering {
   status: VendorEntityStatus;
   createdAt: Date | null;
   updatedAt: Date | null;
-  installationCount?: number;
+  deviceCount?: number;
   modelName?: string;
   locationName?: string;
 }
 
-export interface VendorInstallation {
+export interface VendorDevice {
   walletAddress: string;
   vendorOfferingId: string;
   label: string;
@@ -263,11 +263,41 @@ export interface VendorInstallation {
   createdAt: Date | null;
   updatedAt: Date | null;
   slotCount?: number;
+  /**
+   * Display enrichment, populated only by the org-wide device list
+   * (GET /devices) so a flat device list can show where each device lives
+   * without extra lookups. Undefined on the per-offering list.
+   */
+  offeringName?: string;
+  locationId?: string;
+  locationName?: string;
+  modelId?: string;
+  modelName?: string;
+  modelType?: VendorModelType | null;
 }
 
-export interface VendorInstallationSlot {
+/** Whether a scanned device's wallet is free to register, already owned by the
+ *  current entity, or owned by another entity. */
+export type VendorDeviceLookupStatus = 'available' | 'owned' | 'taken';
+
+/**
+ * Result of GET /devices/lookup/:walletAddress — lets the add-device flow fail
+ * fast on a duplicate before the wizard runs, with an ownership-aware message:
+ * - `available`: no active device with this wallet (free to add; a soft-deleted
+ *   one would be reactivated);
+ * - `owned`: this entity already registered it — `offeringId`/`label` locate it;
+ * - `taken`: another entity owns it (no identifying details are exposed).
+ */
+export interface VendorDeviceLookup {
+  walletAddress: string;
+  status: VendorDeviceLookupStatus;
+  offeringId?: string;
+  label?: string;
+}
+
+export interface VendorDeviceSlot {
   id: string;
-  installationWalletAddress: string;
+  deviceWalletAddress: string;
   label: string;
   row: string | null;
   column: string | null;
@@ -403,19 +433,19 @@ export interface VendorOfferingUpdateRequest {
   schedule?: DailySchedule[] | null;
 }
 
-export interface VendorInstallationCreateRequest {
+export interface VendorDeviceCreateRequest {
   deviceProof: SignedData<{ walletAddress: string }>;
   vendorOfferingId: string;
   label: string;
   connectionString?: string;
 }
 
-export interface VendorInstallationUpdateRequest {
+export interface VendorDeviceUpdateRequest {
   label?: string;
   vendorOfferingId?: string;
 }
 
-export interface VendorInstallationSlotCreateRequest {
+export interface VendorDeviceSlotCreateRequest {
   label: string;
   row?: string;
   column?: string;
@@ -425,7 +455,7 @@ export interface VendorInstallationSlotCreateRequest {
   action?: SlotAction | null;
 }
 
-export interface VendorInstallationSlotUpdateRequest {
+export interface VendorDeviceSlotUpdateRequest {
   label?: string;
   row?: string | null;
   column?: string | null;
@@ -435,7 +465,7 @@ export interface VendorInstallationSlotUpdateRequest {
   action?: SlotAction | null;
 }
 
-export interface VendorInstallationSlotBulkCreateRequest {
+export interface VendorDeviceSlotBulkCreateRequest {
   rows: string[];
   columns: string[];
 }
@@ -462,10 +492,10 @@ export interface BuyerVerifyResponse {
     interruption: VendorModelInterruption | null;
     payment: VendorModelPayment | null;
   };
-  installation: {
+  device: {
     name: string;
   };
-  /** Full offering pricing-tier menu. Used by buyers to pick a service on single-slot installations. */
+  /** Full offering pricing-tier menu. Used by buyers to pick a service on single-slot devices. */
   offeringTiers?: PricingTier[];
   operating: boolean;
   operatingPeriod: {
@@ -584,6 +614,43 @@ export interface BleDeviceResponse {
   status: 'OK' | 'ERROR' | 'BUSY' | 'UNAUTHORIZED' | 'NOT_CONFIGURED';
   message?: string;
   data?: string;
+}
+
+// =============================================================================
+// Streaming-protocol control messages (ping / pong)
+// =============================================================================
+
+/**
+ * Reserved control-message types for the streaming protocol's liveness check.
+ * They ride the same framed command (app→device) and response (device→app)
+ * channels as business traffic, but are recognised and answered by the
+ * transport layer itself — never surfaced to app code — so either end can check
+ * the link is alive and neither app re-implements it.
+ *
+ * Control messages are unsigned and keyed off `type`, which is how they are told
+ * apart from business {@link PiCommand} (keyed off `command`) and
+ * {@link BleDeviceResponse} (keyed off `status`).
+ */
+export const BLE_PING = 'PING';
+export const BLE_PONG = 'PONG';
+
+export interface BleControlMessage {
+  type: typeof BLE_PING | typeof BLE_PONG;
+  /** Echoed from a PING into its PONG so the sender can match the two. */
+  nonce: string;
+  /** Epoch-ms send time, for round-trip / liveness diagnostics. */
+  ts?: number;
+}
+
+/** Narrow an arbitrary parsed message to a ping/pong control message. */
+export function isBleControlMessage(
+  value: unknown
+): value is BleControlMessage {
+  if (typeof value !== 'object' || value === null) return false;
+  const m = value as Record<string, unknown>;
+  return (
+    (m.type === BLE_PING || m.type === BLE_PONG) && typeof m.nonce === 'string'
+  );
 }
 
 /** Device info read from BLE characteristic */
@@ -771,13 +838,10 @@ export type VendorModelListResponse = BaseResponse<VendorModel[]>;
 export type VendorModelResponse = BaseResponse<VendorModel>;
 export type VendorOfferingListResponse = BaseResponse<VendorOffering[]>;
 export type VendorOfferingResponse = BaseResponse<VendorOffering>;
-export type VendorInstallationListResponse = BaseResponse<VendorInstallation[]>;
-export type VendorInstallationResponse = BaseResponse<VendorInstallation>;
-export type VendorInstallationSlotListResponse = BaseResponse<
-  VendorInstallationSlot[]
->;
-export type VendorInstallationSlotResponse =
-  BaseResponse<VendorInstallationSlot>;
+export type VendorDeviceListResponse = BaseResponse<VendorDevice[]>;
+export type VendorDeviceResponse = BaseResponse<VendorDevice>;
+export type VendorDeviceSlotListResponse = BaseResponse<VendorDeviceSlot[]>;
+export type VendorDeviceSlotResponse = BaseResponse<VendorDeviceSlot>;
 
 // Delete response
 export interface DeleteResult {

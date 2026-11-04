@@ -64,7 +64,7 @@ function verify(overrides: Partial<BuyerVerifyResponse>): BuyerVerifyResponse {
       interruption: null,
       payment: null,
     },
-    installation: { name: 'Device' },
+    device: { name: 'Device' },
     operating: true,
     operatingPeriod: null,
     slots: [],
