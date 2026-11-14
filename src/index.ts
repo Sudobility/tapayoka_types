@@ -52,7 +52,7 @@ export type VendorModelSlotPricing = 'Tiered' | 'Unique';
 
 export type VendorEntityStatus = 'Active' | 'Inactive' | 'Deleted';
 
-export type DurationUnit = 'minutes' | 'hours';
+export type DurationUnit = 'seconds' | 'minutes' | 'hours';
 
 export type DayOfWeek =
   | 'Monday'
@@ -945,7 +945,14 @@ export function actionAuthorizationFields(
 }
 
 export function durationUnitSeconds(unit: DurationUnit): number {
-  return unit === 'hours' ? 3600 : 60;
+  switch (unit) {
+    case 'hours':
+      return 3600;
+    case 'seconds':
+      return 1;
+    default:
+      return 60;
+  }
 }
 
 export function priceStringToCents(price: string): number {
@@ -1046,7 +1053,12 @@ export function formatPricingSubtitle(tiers: PricingTier[]): string {
   if (tiers.length === 0) return 'No pricing';
   const first = tiers[0];
   if (first.type === 'timed') {
-    const unit = first.startDurationUnit === 'hours' ? 'hr' : 'min';
+    const unit =
+      first.startDurationUnit === 'hours'
+        ? 'hr'
+        : first.startDurationUnit === 'seconds'
+          ? 'sec'
+          : 'min';
     const base = `${formatPrice(priceStringToCents(first.startPrice), first.currencyCode)} / ${first.startDuration}${unit}`;
     return tiers.length > 1 ? `${base} (+${tiers.length - 1} more)` : base;
   }
