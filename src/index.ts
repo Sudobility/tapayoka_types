@@ -3,7 +3,9 @@
  * TypeScript types for Tapayoka - QR-to-device cashless payment system
  */
 
-// Re-export common types from @sudobility/types
+// Re-export common types from @sudobility/types. The generic response/health
+// types and the response constructors are the canonical ones from
+// @sudobility/types — this package never redefines them.
 export type {
   ApiResponse,
   BaseResponse,
@@ -12,9 +14,13 @@ export type {
   PaginatedResponse,
   PaginationInfo,
   PaginationOptions,
+  ApiInfoResponse,
+  HealthResponse,
+  HealthCheckData,
 } from '@sudobility/types';
+export { successResponse, errorResponse } from '@sudobility/types';
 
-import type { BaseResponse } from '@sudobility/types';
+import type { BaseResponse, HealthCheckData } from '@sudobility/types';
 
 // =============================================================================
 // Enums
@@ -705,16 +711,11 @@ export interface PiApiResponse<T = unknown> extends BaseResponse<T> {
 
 // =============================================================================
 // Response Helper Functions
+//
+// `successResponse` / `errorResponse` are the canonical constructors from
+// `@sudobility/types`, re-exported at the top of this file. `piSuccessResponse`
+// below is tapayoka-specific (it carries a `pi` command to relay over BLE).
 // =============================================================================
-
-/** Create a success response */
-export function successResponse<T>(data: T): BaseResponse<T> {
-  return {
-    success: true,
-    data,
-    timestamp: new Date().toISOString(),
-  };
-}
 
 /** Create a success response with a Pi command to relay to the device */
 export function piSuccessResponse<T>(data: T, pi: PiCommand): PiApiResponse<T> {
@@ -722,15 +723,6 @@ export function piSuccessResponse<T>(data: T, pi: PiCommand): PiApiResponse<T> {
     success: true,
     data,
     pi,
-    timestamp: new Date().toISOString(),
-  };
-}
-
-/** Create an error response */
-export function errorResponse(error: string): BaseResponse<never> {
-  return {
-    success: false,
-    error,
     timestamp: new Date().toISOString(),
   };
 }
@@ -849,12 +841,8 @@ export interface DeleteResult {
 }
 export type DeleteResponse = BaseResponse<DeleteResult>;
 
-// Health check
-export interface HealthCheckData {
-  name: string;
-  version: string;
-  status: string;
-}
+// Health check — `HealthCheckData` is the generic payload from
+// @sudobility/types (re-exported above); this is just the envelope alias.
 export type HealthCheckResponse = BaseResponse<HealthCheckData>;
 
 // Entity types (re-exported from @sudobility/types)
