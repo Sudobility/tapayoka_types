@@ -640,22 +640,54 @@ export interface BleDeviceResponse {
 export const BLE_PING = 'PING';
 export const BLE_PONG = 'PONG';
 
+/**
+ * Graceful-disconnect handshake, riding the same control channel as ping/pong.
+ *
+ * When one side actively tears down a live link it first sends a DISCONNECT and
+ * waits briefly (≤250ms) for the peer's DISCONNECTED ack before closing the
+ * BLE/WS transport, so the peer can return to its idle state (a device back to
+ * showing its QR code) immediately instead of waiting out a BLE supervision
+ * timeout or heartbeat miss. On receiving a DISCONNECT, a side replies
+ * DISCONNECTED and then closes its own transport.
+ *
+ * The handshake is skipped when the link is already known dead (an unanswered
+ * heartbeat PING): there is no peer to hear a DISCONNECT, so that side just
+ * closes the transport.
+ */
+export const BLE_DISCONNECT = 'DISCONNECT';
+export const BLE_DISCONNECTED = 'DISCONNECTED';
+
 export interface BleControlMessage {
-  type: typeof BLE_PING | typeof BLE_PONG;
-  /** Echoed from a PING into its PONG so the sender can match the two. */
+  type:
+    | typeof BLE_PING
+    | typeof BLE_PONG
+    | typeof BLE_DISCONNECT
+    | typeof BLE_DISCONNECTED;
+  /**
+   * Echoed from a PING into its PONG (and from a DISCONNECT into its
+   * DISCONNECTED) so the sender can match the two.
+   */
   nonce: string;
   /** Epoch-ms send time, for round-trip / liveness diagnostics. */
   ts?: number;
 }
 
-/** Narrow an arbitrary parsed message to a ping/pong control message. */
+/**
+ * Narrow an arbitrary parsed message to a control message (ping/pong or the
+ * disconnect handshake). Control messages are told apart from business
+ * {@link PiCommand} / {@link BleDeviceResponse} by their `type` field.
+ */
 export function isBleControlMessage(
   value: unknown
 ): value is BleControlMessage {
   if (typeof value !== 'object' || value === null) return false;
   const m = value as Record<string, unknown>;
   return (
-    (m.type === BLE_PING || m.type === BLE_PONG) && typeof m.nonce === 'string'
+    (m.type === BLE_PING ||
+      m.type === BLE_PONG ||
+      m.type === BLE_DISCONNECT ||
+      m.type === BLE_DISCONNECTED) &&
+    typeof m.nonce === 'string'
   );
 }
 
