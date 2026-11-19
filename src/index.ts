@@ -657,6 +657,17 @@ export const BLE_PONG = 'PONG';
 export const BLE_DISCONNECT = 'DISCONNECT';
 export const BLE_DISCONNECTED = 'DISCONNECTED';
 
+/**
+ * Request command (app → device) that asks the device to send its signed
+ * device-info envelope back over the framed RESPONSE channel, instead of the
+ * app doing a single (512-byte-capped) GATT read of the device-info
+ * characteristic. The reply is framed/chunked like any response, so device_info
+ * is no longer bounded by the attribute-read limit. It is a plain command
+ * (keyed off `command`, like {@link PiCommand}), not a control message, and
+ * carries no `data`/`signing`.
+ */
+export const BLE_GET_DEVICE_INFO = 'GET_DEVICE_INFO';
+
 export interface BleControlMessage {
   type:
     | typeof BLE_PING
@@ -698,6 +709,14 @@ export interface BleDeviceInfo {
   hasServerWallet: boolean;
   timestamp: number;
   nonce: string;
+  /**
+   * Max data bytes per BLE frame the device accepts/sends (its safe ATT
+   * payload). The app caps its outgoing frame size at this when writing to the
+   * device, and the device chunks its own notifications by it. Optional for
+   * backward-compatibility with devices/firmware that predate the field; when
+   * absent the app falls back to its MTU-derived default.
+   */
+  maxDataSize?: number;
 }
 
 // =============================================================================
