@@ -809,9 +809,37 @@ export async function signedSuccessResponse<T extends object>(
 }
 
 /**
+ * Serialize a value with object keys sorted recursively, so two objects with
+ * the same key/value pairs stringify identically regardless of key order.
+ * Used to compare signed payloads order-independently: devices serialize their
+ * fields in various orders, and JSON round-trips (e.g. zod `.passthrough()`,
+ * which hoists declared keys) can reorder them, while the data is unchanged.
+ */
+function canonicalJsonStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null';
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJsonStringify).join(',')}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const entries = Object.keys(obj)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJsonStringify(obj[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
+/**
  * Verify that a SignedData's data matches its signing.message.
  * Checks signing_timestamp is present and within maxAgeMs (default 30s),
- * then removes it and deep-compares the rest with data.
+ * then removes it and compares the rest with data.
+ *
+ * The comparison is order-independent (see {@link canonicalJsonStringify}): it
+ * checks that `data` carries exactly the same keys and values as the signed
+ * message, not that they serialize in the same byte order. The signature over
+ * `signing.message` is what binds the exact bytes; this check guards against a
+ * tampered/mismatched `data` object, and must not be defeated by a mere key
+ * reorder (e.g. zod validation hoisting `walletAddress` to the front).
  */
 export function verifySignedData<T extends object>(
   signed: SignedData<T>,
@@ -827,7 +855,7 @@ export function verifySignedData<T extends object>(
     if (isNaN(ts)) return false;
     if (Math.abs(Date.now() - ts) > maxAgeMs) return false;
 
-    return JSON.stringify(rest) === JSON.stringify(signed.data);
+    return canonicalJsonStringify(rest) === canonicalJsonStringify(signed.data);
   } catch {
     return false;
   }
